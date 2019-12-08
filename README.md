@@ -2,7 +2,7 @@
   <img src="./images/pika.png" width="180" />
 </p>
 
-<p align="center">PikaJS - 一个使用 TypeScript 编写的 JavaScript 解释器</p>
+<p align="center">PikaJS - 使用 TypeScript 编写的 JavaScript 解释器</p>
 
 <hr>
 
