@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { existsSync, readFileSync } from "fs";
 import chalk from "chalk";
 import { parse } from "@babel/parser";
