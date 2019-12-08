@@ -8,7 +8,7 @@
 
 对于想深入了解 JavaScript 引擎内部执行机理的同学，是否在面对语言标准 [Standard ECMA-262](http://www.ecma-international.org/ecma-262/6.0/) 或者浩如烟海的引擎源码时感到手足无措？
 
-不如让我们一起使用 TypeScript 来编写一个 JavaScript 解释器，切身感受一下引擎的基本运行原理，为将来的扬帆远航打下基础。
+不如让我们一起使用 TypeScript 来编写一个 JavaScript 解释器，切身感受一下引擎的基本运行原理，迎接未来的扬帆远航。
 
 ## 进度
 
