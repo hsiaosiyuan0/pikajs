@@ -25,3 +25,4 @@ test/fixtures/**/.fbkpm
 .pnp
 /packages/lockfile/index.js
 *.log
+/test.js

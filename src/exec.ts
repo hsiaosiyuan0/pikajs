@@ -1,32 +1,21 @@
 import {
   Statement,
   isIdentifier,
-  isVariableDeclarator,
   isObjectMember,
   isMemberExpression,
   File,
   isAssignmentExpression,
-  VariableDeclaration,
   program,
-  file
+  file,
+  Expression,
+  expressionStatement
 } from "@babel/types";
 import traverse, { TraverseOptions } from "@babel/traverse";
 import { analyzeFns, FnObj, Fn } from "./fn";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
 
-function execStmt(stmt: Statement, runtime: Runtime) {
-  const {
-    stack,
-    push,
-    pop,
-    topPos,
-    enterEnv,
-    exitEnv,
-    env,
-    pushFrame,
-    popFrame,
-    topFrame
-  } = runtime;
+function execExpr(expr: Expression, runtime: Runtime) {
+  const { stack, push, pop, topPos, env, pushFrame } = runtime;
 
   const literal: TraverseOptions = {
     NullLiteral() {
@@ -69,30 +58,10 @@ function execStmt(stmt: Statement, runtime: Runtime) {
     }
   };
 
-  const expr: TraverseOptions = {
-    BinaryExpression: {
-      exit(path) {
-        const node = path.node;
-        const b = pop();
-        const a = pop();
-        switch (node.operator) {
-          case "+": {
-            push(a + b);
-            break;
-          }
-          default:
-            throw new Error("Unsupported operator: " + node.operator);
-        }
-      }
-    },
+  const simpleExpr: TraverseOptions = {
     Identifier(path) {
       const node = path.node;
       const parent = path.parent;
-      if (isVariableDeclarator(parent) && parent.id === node) {
-        // 如果 identifier 出现在声明项中，且为 id 部分，则将标识符的名称压入栈中
-        push(node.name);
-        return;
-      }
       if (
         isAssignmentExpression(parent) &&
         parent.left === node &&
@@ -114,6 +83,21 @@ function execStmt(stmt: Statement, runtime: Runtime) {
       }
       // 其他情况我们将 identifier 绑定的值压入栈中
       push(env().deref(node.name));
+    },
+    BinaryExpression: {
+      exit(path) {
+        const node = path.node;
+        const b = pop();
+        const a = pop();
+        switch (node.operator) {
+          case "+": {
+            push(a + b);
+            break;
+          }
+          default:
+            throw new Error("Unsupported operator: " + node.operator);
+        }
+      }
     },
     AssignmentExpression: {
       exit(path) {
@@ -174,7 +158,35 @@ function execStmt(stmt: Statement, runtime: Runtime) {
         pushFrame(frame);
         execFrame(frame, runtime);
       }
-    },
+    }
+  };
+
+  traverse(file(program([expressionStatement(expr)]), null, null), {
+    ...literal,
+    ...simpleExpr,
+    ...callExpr
+  });
+}
+
+function execStmt(stmt: Statement, runtime: Runtime) {
+  const {
+    push,
+    pop,
+    topPos,
+    enterEnv,
+    exitEnv,
+    env,
+    popFrame,
+    topFrame
+  } = runtime;
+
+  const exprStmt: TraverseOptions = {
+    ExpressionStatement(path) {
+      execExpr(path.node.expression, runtime);
+    }
+  };
+
+  const retStmt: TraverseOptions = {
     ReturnStatement: {
       exit() {
         const { getBP } = topFrame()!;
@@ -192,23 +204,18 @@ function execStmt(stmt: Statement, runtime: Runtime) {
     }
   };
 
-  const exprStmt: TraverseOptions = {
-    ...literal,
-    ...expr,
-    ...callExpr
-  };
-
   const varDecStmt: TraverseOptions = {
-    VariableDeclarator: {
-      exit(path) {
-        const node = path.node;
-        const stmt = path.parent as VariableDeclaration;
-        if (stmt.kind !== "let")
-          throw new Error("Unsupported declaration type: " + stmt.kind);
-        const init = node.init ? pop() : undefined;
-        const name = pop();
-        env().def(name, init);
+    VariableDeclarator(path) {
+      const node = path.node;
+      if (!isIdentifier(node.id)) {
+        throw new Error(
+          "Unsupported id type in VariableDeclarator: " + node.id
+        );
       }
+      const name = node.id.name;
+      if (node.init) execExpr(node.init, runtime);
+      const init = node.init ? pop() : undefined;
+      env().def(name, init);
     }
   };
 
@@ -233,17 +240,33 @@ function execStmt(stmt: Statement, runtime: Runtime) {
     }
   };
 
+  const ifStmt: TraverseOptions = {
+    IfStatement(path) {
+      const node = path.node;
+      execExpr(node.test, runtime);
+      const test = pop();
+      if (test) {
+        execStmt(node.consequent, runtime);
+      } else if (node.alternate) {
+        execStmt(node.alternate, runtime);
+      }
+      path.skip();
+    }
+  };
+
   traverse(file(program([stmt]), null, null), {
     ...exprStmt,
     ...varDecStmt,
     ...funDecStmt,
-    ...blockStmt
+    ...blockStmt,
+    ...retStmt,
+    ...ifStmt
   });
 }
 
 function execFrame(frame: CallFrame, runtime: Runtime) {
   const { fnObj, getPC, incPC, getBP } = frame;
-  const { enterEnv, stack, topPos, pop, push, popFrame, exitEnv } = runtime;
+  const { enterEnv, stack, topPos, pop, push, popFrame } = runtime;
   const pc = getPC();
   const bp = getBP();
 
@@ -257,7 +280,6 @@ function execFrame(frame: CallFrame, runtime: Runtime) {
     }
     push(ret);
     popFrame();
-    exitEnv();
     return;
   }
   if (pc === 0) {

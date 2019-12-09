@@ -9,7 +9,7 @@
     "type": "tsc --emitDeclarationOnly -p ./tsconfig.json ",
     "dev": "node lib/local_test.js",
     "check": "tsc --noEmit -p ./tsconfig.json",
-    "lint": "eslint '**/*.ts'",
+    "lint": "eslint 'src/**/*.ts'",
     "prepublishOnly": "npm run type && npm run build"
   },
   "keywords": [],

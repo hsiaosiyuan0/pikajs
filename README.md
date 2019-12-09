@@ -25,7 +25,7 @@
 print("Hello World");
 ```
 
-然后通过下面的运行执行程序：
+然后通过下面的命令执行程序：
 
 ```
 npx pikajs path-to-your-source.js
