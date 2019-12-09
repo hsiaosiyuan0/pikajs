@@ -187,20 +187,24 @@ function execStmt(stmt: Statement, runtime: Runtime) {
   };
 
   const retStmt: TraverseOptions = {
-    ReturnStatement: {
-      exit() {
-        const { getBP } = topFrame()!;
-        const bp = getBP();
-        const ret = pop();
-        let i = topPos();
-        while (i > bp) {
-          pop();
-          i--;
-        }
-        push(ret);
-        popFrame();
-        exitEnv();
+    ReturnStatement(path) {
+      const node = path.node;
+      let hasRet = false;
+      if (node.argument) {
+        hasRet = true;
+        execExpr(node.argument, runtime);
       }
+      const { getBP } = topFrame()!;
+      const bp = getBP();
+      const ret = hasRet ? pop() : undefined;
+      let i = topPos();
+      while (i > bp) {
+        pop();
+        i--;
+      }
+      push(ret);
+      popFrame();
+      exitEnv();
     }
   };
 
@@ -274,7 +278,7 @@ function execFrame(frame: CallFrame, runtime: Runtime) {
     const args = stack().slice(bp + 1);
     const ret = fnObj(...args);
     let i = topPos();
-    while (i >= bp) {
+    while (i > bp) {
       pop();
       i--;
     }

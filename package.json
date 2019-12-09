@@ -1,6 +1,6 @@
 {
   "name": "pikajs",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Let's build a little Javascript interpreter together",
   "main": "lib/index.js",
   "bin": "lib/bin.js",
@@ -19,7 +19,8 @@
     "@babel/parser": "^7.7.5",
     "@babel/traverse": "^7.7.4",
     "@babel/types": "^7.7.4",
-    "chalk": "^3.0.0"
+    "chalk": "^3.0.0",
+    "tempfile": "^3.0.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.7.5",

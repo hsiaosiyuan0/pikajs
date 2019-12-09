@@ -19,14 +19,14 @@
 
 ## 运行
 
-解释器目前已经有了雏形，可以先将下面的代码保存到磁盘上：
-
-```js
-print("Hello World");
-```
-
-然后通过下面的命令执行程序：
+大家可以先通过运行 `tests` 目录下的测试案例来体验一下效果，通过下面的命令执行程序：
 
 ```
 npx pikajs path-to-your-source.js
+```
+
+`path-to-your-source.js` 可以是磁盘路径或者网络文件，可以直接拷贝运行下面的命令：
+
+```
+npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/hello.test.js
 ```

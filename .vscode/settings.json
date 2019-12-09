@@ -1,7 +1,8 @@
 {
     "cSpell.words": [
         "deref",
-        "pikajs"
+        "pikajs",
+        "tempfile"
     ],
     "typescript.tsdk": "node_modules/typescript/lib"
 }
