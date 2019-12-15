@@ -167,19 +167,9 @@ function execExpr(expr: Expression, runtime: Runtime) {
 
   const fnExpr: TraverseOptions = {
     FunctionExpression(path) {
-      // const name = fnExprName(path.node);
-      // const fnObj = topFnObj() as FnObj;
-      // const fo = fnObj.fn.subs.get(name)!.newObj();
-      // env().registerCapture(fo);
-      // push(fo);
-      // path.skip();
       resolveFn(path, runtime);
     },
     ArrowFunctionExpression(path) {
-      // const name = fnExprName(path.node);
-      // const fnObj = topFnObj() as FnObj;
-      // push(fnObj.fn.subs.get(name));
-      // path.skip();
       resolveFn(path, runtime);
     }
   };
@@ -258,11 +248,6 @@ function execStmt(stmt: Statement, runtime: Runtime) {
 
   const funDecStmt: TraverseOptions = {
     FunctionDeclaration(path) {
-      // const node = path.node;
-      // const fnObj = topFnObj() as FnObj;
-      // const name = node.id!.name;
-      // env().def(name, fnObj.fn.subs.get(name));
-      // path.skip();
       resolveFn(path, runtime);
     }
   };

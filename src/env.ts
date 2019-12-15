@@ -64,16 +64,6 @@ export class Env {
     env.bindings.set(name, v);
   }
 
-  // regCapture(fn: FnObj) {
-  //   this.captures.push({ fn, names: [...fn.captured.keys()] });
-  // }
-
-  // capture() {
-  //   this.captures.forEach(({ env, names }) =>
-  //     names.forEach(name => fn.captured.set(name, this.deref(name)))
-  //   );
-  // }
-
   registerCapture(fn: FnObj) {
     for (const name of fn.fn.outlets) {
       const { env } = this.resolve(name);
