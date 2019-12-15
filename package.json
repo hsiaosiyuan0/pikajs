@@ -10,7 +10,8 @@
     "dev": "node lib/local_test.js",
     "check": "tsc --noEmit -p ./tsconfig.json",
     "lint": "eslint 'src/**/*.ts'",
-    "prepublishOnly": "npm run type && npm run build"
+    "prepublishOnly": "npm run type && npm run build",
+    "test": "npm run build && node tests/run-test.js"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,7 @@
     "@babel/traverse": "^7.7.4",
     "@babel/types": "^7.7.4",
     "chalk": "^3.0.0",
+    "cliui": "^6.0.0",
     "tempfile": "^3.0.0"
   },
   "devDependencies": {

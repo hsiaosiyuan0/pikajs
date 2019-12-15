@@ -77,6 +77,10 @@ export function runtime() {
   function callStack() {
     return _callStack;
   }
+  function topFnObj() {
+    if (!_topFrame) return;
+    return _topFrame.fnObj;
+  }
 
   return {
     stack,
@@ -90,6 +94,7 @@ export function runtime() {
     pushFrame,
     popFrame,
     topFrame,
+    topFnObj,
     callStack
   };
 }

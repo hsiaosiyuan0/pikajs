@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 import { exists, readFile, createWriteStream } from "fs";
-import chalk from "chalk";
-import { parse } from "@babel/parser";
 import { exec } from "./exec";
 import { promisify } from "util";
-import { go } from "./util";
+import { go, fatal } from "./util";
 import http from "http";
 import https from "https";
 import tempfile from "tempfile";
@@ -13,10 +11,6 @@ import url from "url";
 const existsAsync = promisify(exists);
 const readFileAsync = promisify(readFile);
 
-const fatal = (msg: string) => {
-  console.log(chalk.red(msg));
-  return process.exit(1);
-};
 function isRemoteFile(file: string) {
   try {
     const u = url.parse(file);
@@ -26,7 +20,7 @@ function isRemoteFile(file: string) {
   }
 }
 
-async function retrieveLocal(file: string) {
+export async function retrieveLocal(file: string) {
   const [resp, err] = await go(existsAsync(file));
   if (err) fatal("Unexpected Error: " + err);
   if (!resp) fatal("Source file does not exist");
@@ -60,7 +54,8 @@ async function retrieveRemote(file: string) {
 }
 
 async function run() {
-  const srcFile = process.argv[2];
+  // const srcFile = process.argv[2];
+  const srcFile = "./tests/fn-expr.test.js";
   if (!srcFile) fatal("Please specify a source file");
   const [resp, err] = isRemoteFile(srcFile);
   if (err) fatal("Deformed file path: " + srcFile);
@@ -70,8 +65,7 @@ async function run() {
   } else {
     code = await retrieveLocal(srcFile);
   }
-  const ast = parse(code);
-  exec(ast);
+  exec(code);
 }
 
 run();

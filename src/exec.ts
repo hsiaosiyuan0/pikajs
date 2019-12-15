@@ -3,7 +3,6 @@ import {
   isIdentifier,
   isObjectMember,
   isMemberExpression,
-  File,
   isAssignmentExpression,
   program,
   file,
@@ -11,11 +10,15 @@ import {
   expressionStatement
 } from "@babel/types";
 import traverse, { TraverseOptions } from "@babel/traverse";
-import { analyzeFns, FnObj, Fn } from "./fn";
+import { analyzeFns, FnObj, Fn, fnExprName } from "./fn";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
+import { parse } from "@babel/parser";
+import { fatal } from "./util";
+
+class RuntimeError extends Error {}
 
 function execExpr(expr: Expression, runtime: Runtime) {
-  const { stack, push, pop, topPos, env, pushFrame } = runtime;
+  const { stack, push, pop, topPos, env, pushFrame, topFnObj } = runtime;
 
   const literal: TraverseOptions = {
     NullLiteral() {
@@ -95,7 +98,7 @@ function execExpr(expr: Expression, runtime: Runtime) {
             break;
           }
           default:
-            throw new Error("Unsupported operator: " + node.operator);
+            throw new RuntimeError("Unsupported operator: " + node.operator);
         }
       }
     },
@@ -137,6 +140,21 @@ function execExpr(expr: Expression, runtime: Runtime) {
     }
   };
 
+  const fnExpr: TraverseOptions = {
+    FunctionExpression(path) {
+      const name = fnExprName(path.node);
+      const fnObj = topFnObj() as FnObj;
+      push(fnObj.fn.subs.get(name));
+      path.skip();
+    },
+    ArrowFunctionExpression(path) {
+      const name = fnExprName(path.node);
+      const fnObj = topFnObj() as FnObj;
+      push(fnObj.fn.subs.get(name));
+      path.skip();
+    }
+  };
+
   const frames: CallFrame[] = [];
   const callExpr: TraverseOptions = {
     CallExpression: {
@@ -164,7 +182,8 @@ function execExpr(expr: Expression, runtime: Runtime) {
   traverse(file(program([expressionStatement(expr)]), null, null), {
     ...literal,
     ...simpleExpr,
-    ...callExpr
+    ...callExpr,
+    ...fnExpr
   });
 }
 
@@ -177,7 +196,8 @@ function execStmt(stmt: Statement, runtime: Runtime) {
     exitEnv,
     env,
     popFrame,
-    topFrame
+    topFrame,
+    topFnObj
   } = runtime;
 
   const exprStmt: TraverseOptions = {
@@ -212,7 +232,7 @@ function execStmt(stmt: Statement, runtime: Runtime) {
     VariableDeclarator(path) {
       const node = path.node;
       if (!isIdentifier(node.id)) {
-        throw new Error(
+        throw new RuntimeError(
           "Unsupported id type in VariableDeclarator: " + node.id
         );
       }
@@ -220,15 +240,16 @@ function execStmt(stmt: Statement, runtime: Runtime) {
       if (node.init) execExpr(node.init, runtime);
       const init = node.init ? pop() : undefined;
       env().def(name, init);
+      path.skip();
     }
   };
 
   const funDecStmt: TraverseOptions = {
     FunctionDeclaration(path) {
       const node = path.node;
-      const { fnObj } = topFrame()!;
+      const fnObj = topFnObj() as FnObj;
       const name = node.id!.name;
-      env().def(name, (fnObj as FnObj).fn.subs.get(name));
+      env().def(name, fnObj.fn.subs.get(name));
       path.skip();
     }
   };
@@ -296,16 +317,24 @@ function execFrame(frame: CallFrame, runtime: Runtime) {
   incPC();
 }
 
-export function exec(prog: File) {
-  const fn = analyzeFns(prog);
+export function exec(code: string) {
+  let fn: Fn;
+  try {
+    const ast = parse(code);
+    fn = analyzeFns(ast);
+  } catch (e) {
+    fatal("Unexpected error when preparing: " + e.stack);
+  }
   const rt = runtime();
   const { pushFrame, topFrame } = rt;
-  pushFrame(makeFrame(fn.newObj()));
-  function exec() {
-    let frame: CallFrame | undefined;
+  pushFrame(makeFrame(fn!.newObj()));
+  let frame: CallFrame | undefined;
+  try {
     while ((frame = topFrame())) {
       execFrame(frame, rt);
     }
+  } catch (err) {
+    if (err instanceof RuntimeError) fatal("Runtime error: " + err.stack);
+    throw err;
   }
-  exec();
 }

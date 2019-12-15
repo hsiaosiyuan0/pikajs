@@ -7,9 +7,14 @@ import {
   isMemberExpression,
   isFunctionDeclaration,
   isReturnStatement,
-  returnStatement
+  returnStatement,
+  FunctionExpression,
+  FunctionDeclaration,
+  ArrowFunctionExpression,
+  isBlockStatement,
+  isExpression
 } from "@babel/types";
-import traverse, { TraverseOptions } from "@babel/traverse";
+import traverse, { TraverseOptions, VisitNodeObject } from "@babel/traverse";
 import { regBuiltin } from "./builtin";
 
 export class Scope {
@@ -55,6 +60,10 @@ export class FnObj {
   }
 }
 
+export function fnExprName(node: FunctionExpression | ArrowFunctionExpression) {
+  return `__line${node.loc!.start.line}__`;
+}
+
 export class Fn {
   name?: string;
   params: string[];
@@ -65,7 +74,7 @@ export class Fn {
   _outer?: Fn;
   _scope?: Scope;
 
-  constructor(name?: string, params: string[] = [], body: Statement[] = []) {
+  constructor(name = "", params: string[] = [], body: Statement[] = []) {
     this.name = name;
     this.params = params;
     this.body = body;
@@ -103,6 +112,11 @@ export class Fn {
   }
 }
 
+type FnTypes =
+  | FunctionExpression
+  | FunctionDeclaration
+  | ArrowFunctionExpression;
+
 export function analyzeFns(node: Node) {
   let fn = new Fn();
   let scope = new Scope();
@@ -114,6 +128,44 @@ export function analyzeFns(node: Node) {
   function exitScope() {
     scope = scope.outer!;
   }
+
+  const fnHandler: VisitNodeObject<Node, FnTypes> = {
+    enter(path) {
+      const node = path.node;
+      const params = node.params.map(p => {
+        if (isIdentifier(p)) return p.name;
+        throw new Error("Unsupported param type: " + p);
+      });
+      enterScope();
+      params.forEach(p => scope.def(p));
+
+      let name: string;
+      if (isFunctionDeclaration(node)) {
+        name = node.id!.name;
+      } else {
+        name = fnExprName(node);
+      }
+      const fun = new Fn(
+        name,
+        params,
+        isBlockStatement(node.body)
+          ? node.body.body
+          : [isExpression(node.body) ? returnStatement(node.body) : node.body]
+      );
+      fun._outer = fn;
+      fun._scope = scope;
+      fn.subs.set(name, fun);
+      fn = fun;
+    },
+    exit() {
+      exitScope();
+      fn.ensureRet();
+      const outer = fn._outer;
+      delete fn._outer;
+      delete fn._scope;
+      fn = outer!;
+    }
+  };
 
   const visitor: TraverseOptions = {
     Program: {
@@ -139,32 +191,9 @@ export function analyzeFns(node: Node) {
         exitScope();
       }
     },
-    FunctionDeclaration: {
-      enter(path) {
-        const node = path.node;
-        const params = node.params.map(p => {
-          if (isIdentifier(p)) return p.name;
-          throw new Error("Unsupported param type: " + p);
-        });
-        enterScope();
-        params.forEach(p => scope.def(p));
-
-        const name = node.id!.name;
-        const fun = new Fn(name, params, node.body.body);
-        fun._outer = fn;
-        fun._scope = scope;
-        fn.subs.set(name, fun);
-        fn = fun;
-      },
-      exit() {
-        exitScope();
-        fn.ensureRet();
-        const outer = fn._outer;
-        delete fn._outer;
-        delete fn._scope;
-        fn = outer!;
-      }
-    },
+    FunctionDeclaration: fnHandler,
+    FunctionExpression: fnHandler,
+    ArrowFunctionExpression: fnHandler,
     Identifier(path) {
       const parent = path.parent;
       const node = path.node;
