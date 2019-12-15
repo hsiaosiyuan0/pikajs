@@ -112,7 +112,7 @@ export class Fn {
   }
 }
 
-type FnTypes =
+export type FnTypes =
   | FunctionExpression
   | FunctionDeclaration
   | ArrowFunctionExpression;

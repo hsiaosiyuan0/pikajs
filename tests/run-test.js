@@ -1,7 +1,7 @@
 const fs = require("fs");
 const { promisify } = require("util");
 const path = require("path");
-const { retrieveLocal } = require("../lib/bin");
+const { retrieveLocal } = require("../lib/cli");
 const chalk = require("chalk");
 const { exec } = require("../lib/exec");
 const ui = require("cliui")();

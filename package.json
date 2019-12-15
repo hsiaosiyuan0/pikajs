@@ -1,13 +1,12 @@
 {
   "name": "pikajs",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "Let's build a little Javascript interpreter together",
   "main": "lib/index.js",
   "bin": "lib/bin.js",
   "scripts": {
     "build": "babel src -d lib --extensions \".ts\" --source-maps",
     "type": "tsc --emitDeclarationOnly -p ./tsconfig.json ",
-    "dev": "node lib/local_test.js",
     "check": "tsc --noEmit -p ./tsconfig.json",
     "lint": "eslint 'src/**/*.ts'",
     "prepublishOnly": "npm run type && npm run build",

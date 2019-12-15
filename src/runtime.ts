@@ -4,19 +4,19 @@ import { installBuiltin } from "./builtin";
 
 export interface CallFrame {
   fnObj: FnObj | Function;
-  // callee 在栈上的位置
-  getBP: () => number;
+  args: any[];
   getPC: () => number;
   incPC: () => void;
 }
 
-export function makeFrame(fnObj: FnObj | Function, bp = 0): CallFrame {
+export function makeFrame(
+  fnObj: FnObj | Function,
+  args: any[] = []
+): CallFrame {
   let pc = 0;
   return {
     fnObj,
-    getBP() {
-      return bp;
-    },
+    args,
     getPC() {
       return pc;
     },
@@ -53,6 +53,7 @@ export function runtime() {
     return (_env = new Env(_env));
   }
   function exitEnv() {
+    _env.close();
     _env = _env.outer!;
   }
   function env() {

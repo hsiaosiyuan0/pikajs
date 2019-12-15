@@ -7,18 +7,43 @@ import {
   program,
   file,
   Expression,
-  expressionStatement
+  expressionStatement,
+  isV8IntrinsicIdentifier,
+  isExpression,
+  isFunctionExpression,
+  isArrowFunctionExpression
 } from "@babel/types";
-import traverse, { TraverseOptions } from "@babel/traverse";
-import { analyzeFns, FnObj, Fn, fnExprName } from "./fn";
+import traverse, { TraverseOptions, NodePath } from "@babel/traverse";
+import { analyzeFns, FnObj, Fn, fnExprName, FnTypes } from "./fn";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
 import { parse } from "@babel/parser";
 import { fatal } from "./util";
 
 class RuntimeError extends Error {}
 
+const resolveFn = (path: NodePath<FnTypes>, runtime: Runtime) => {
+  const { env, topFnObj, push } = runtime;
+  const node = path.node;
+  let name: string;
+  let fo: FnObj;
+  const fnObj = topFnObj() as FnObj;
+  if (isFunctionExpression(node) || isArrowFunctionExpression(node)) {
+    name = fnExprName(node);
+    fo = fnObj.fn.subs.get(name)!.newObj();
+    env().registerCapture(fo);
+    push(fo);
+  } else {
+    name = node.id!.name;
+    fo = fnObj.fn.subs.get(name)!.newObj();
+    env()
+      .registerCapture(fo)
+      .def(name, fo);
+  }
+  path.skip();
+};
+
 function execExpr(expr: Expression, runtime: Runtime) {
-  const { stack, push, pop, topPos, env, pushFrame, topFnObj } = runtime;
+  const { push, pop, env, pushFrame } = runtime;
 
   const literal: TraverseOptions = {
     NullLiteral() {
@@ -142,40 +167,48 @@ function execExpr(expr: Expression, runtime: Runtime) {
 
   const fnExpr: TraverseOptions = {
     FunctionExpression(path) {
-      const name = fnExprName(path.node);
-      const fnObj = topFnObj() as FnObj;
-      push(fnObj.fn.subs.get(name));
-      path.skip();
+      // const name = fnExprName(path.node);
+      // const fnObj = topFnObj() as FnObj;
+      // const fo = fnObj.fn.subs.get(name)!.newObj();
+      // env().registerCapture(fo);
+      // push(fo);
+      // path.skip();
+      resolveFn(path, runtime);
     },
     ArrowFunctionExpression(path) {
-      const name = fnExprName(path.node);
-      const fnObj = topFnObj() as FnObj;
-      push(fnObj.fn.subs.get(name));
-      path.skip();
+      // const name = fnExprName(path.node);
+      // const fnObj = topFnObj() as FnObj;
+      // push(fnObj.fn.subs.get(name));
+      // path.skip();
+      resolveFn(path, runtime);
     }
   };
 
-  const frames: CallFrame[] = [];
   const callExpr: TraverseOptions = {
-    CallExpression: {
-      enter() {
-        const frame = makeFrame(null as any, topPos());
-        frames.push(frame);
-      },
-      exit() {
-        const frame = frames.pop()!;
-        const bp = frame.getBP();
-        const s = stack();
-        const fn = s[bp];
-        if (fn instanceof Fn) {
-          frame.fnObj = fn.newObj();
-        } else {
-          // native
-          frame.fnObj = fn;
-        }
-        pushFrame(frame);
-        execFrame(frame, runtime);
+    CallExpression(path) {
+      const node = path.node;
+      const callee = node.callee;
+      if (isV8IntrinsicIdentifier(callee))
+        throw new RuntimeError("Unsupported callee type: " + callee);
+      execExpr(callee, runtime);
+      const fn = pop();
+      const args: any[] = [];
+      node.arguments.forEach(arg => {
+        if (!isExpression(arg))
+          throw new RuntimeError("Unsupported argument type: " + arg);
+        execExpr(arg, runtime);
+        args.push(pop());
+      });
+      const frame = makeFrame(fn, args);
+      if (fn instanceof FnObj) {
+        frame.fnObj = fn;
+      } else {
+        // native
+        frame.fnObj = fn;
       }
+      pushFrame(frame);
+      execFrame(frame, runtime);
+      path.skip();
     }
   };
 
@@ -188,17 +221,7 @@ function execExpr(expr: Expression, runtime: Runtime) {
 }
 
 function execStmt(stmt: Statement, runtime: Runtime) {
-  const {
-    push,
-    pop,
-    topPos,
-    enterEnv,
-    exitEnv,
-    env,
-    popFrame,
-    topFrame,
-    topFnObj
-  } = runtime;
+  const { push, pop, enterEnv, exitEnv, env, popFrame } = runtime;
 
   const exprStmt: TraverseOptions = {
     ExpressionStatement(path) {
@@ -209,22 +232,11 @@ function execStmt(stmt: Statement, runtime: Runtime) {
   const retStmt: TraverseOptions = {
     ReturnStatement(path) {
       const node = path.node;
-      let hasRet = false;
-      if (node.argument) {
-        hasRet = true;
-        execExpr(node.argument, runtime);
-      }
-      const { getBP } = topFrame()!;
-      const bp = getBP();
-      const ret = hasRet ? pop() : undefined;
-      let i = topPos();
-      while (i > bp) {
-        pop();
-        i--;
-      }
-      push(ret);
+      if (node.argument) execExpr(node.argument, runtime);
+      else push(undefined);
       popFrame();
       exitEnv();
+      path.skip();
     }
   };
 
@@ -246,11 +258,12 @@ function execStmt(stmt: Statement, runtime: Runtime) {
 
   const funDecStmt: TraverseOptions = {
     FunctionDeclaration(path) {
-      const node = path.node;
-      const fnObj = topFnObj() as FnObj;
-      const name = node.id!.name;
-      env().def(name, fnObj.fn.subs.get(name));
-      path.skip();
+      // const node = path.node;
+      // const fnObj = topFnObj() as FnObj;
+      // const name = node.id!.name;
+      // env().def(name, fnObj.fn.subs.get(name));
+      // path.skip();
+      resolveFn(path, runtime);
     }
   };
 
@@ -290,27 +303,22 @@ function execStmt(stmt: Statement, runtime: Runtime) {
 }
 
 function execFrame(frame: CallFrame, runtime: Runtime) {
-  const { fnObj, getPC, incPC, getBP } = frame;
-  const { enterEnv, stack, topPos, pop, push, popFrame } = runtime;
+  const { fnObj, args, getPC, incPC } = frame;
+  const { enterEnv, push, popFrame } = runtime;
   const pc = getPC();
-  const bp = getBP();
 
+  // native
   if (typeof fnObj === "function") {
-    const args = stack().slice(bp + 1);
     const ret = fnObj(...args);
-    let i = topPos();
-    while (i > bp) {
-      pop();
-      i--;
-    }
     push(ret);
     popFrame();
     return;
   }
+
   if (pc === 0) {
-    const args = stack().slice(bp + 1);
-    const env = enterEnv();
-    fnObj.fn.params.forEach((name, i) => env.def(name, args[i]));
+    const _env = enterEnv();
+    fnObj.captured.forEach((v, k) => _env.def(k, v));
+    fnObj.fn.params.forEach((name, i) => _env.def(name, args[i]));
   }
   const stmts = fnObj.fn.body;
   execStmt(stmts[pc], runtime);
