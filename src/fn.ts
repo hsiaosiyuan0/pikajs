@@ -53,6 +53,7 @@ export class Scope {
 export class FnObj {
   fn: Fn;
   captured: Map<string, any>;
+  thisObj: any;
 
   constructor(fn: Fn) {
     this.fn = fn;
@@ -216,4 +217,8 @@ export function analyzeFns(node: Node) {
   };
   traverse(node, visitor);
   return fn;
+}
+
+export function isFun(obj: any): obj is FnObj {
+  return obj instanceof FnObj;
 }

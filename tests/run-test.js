@@ -35,7 +35,7 @@ async function runTest({ name, path }) {
   console.log = old;
   if (ok) {
     ui.div({ text: chalk.cyan(name), width: 20 }, { text: chalk.green("ok") });
-    return;
+    return { name, ok };
   }
   console.log(chalk.red(`Failed on ${chalk.bold(name)}`));
   console.log(chalk.red(err.stack));
@@ -46,15 +46,15 @@ async function runTest({ name, path }) {
 (async () => {
   const cases = await listTests();
   const tasks = cases.map(runTest);
-  await Promise.all(tasks);
-  const succeed = tasks.fill(t => t.ok);
+  const results = await Promise.all(tasks);
+  const succeed = results.filter(t => t.ok);
   ui.div({
     text: "-".repeat(30)
   });
   ui.div(
-    { text: `All: ${tasks.length}`, width: 10 },
+    { text: `All: ${results.length}`, width: 10 },
     { text: `OK: ${succeed.length}`, width: 10 },
-    { text: `Fail: ${tasks.length - succeed.length}`, width: 10 }
+    { text: `Fail: ${results.length - succeed.length}`, width: 10 }
   );
   console.log(ui.toString());
 })();

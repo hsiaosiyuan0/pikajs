@@ -11,10 +11,11 @@ import {
   isV8IntrinsicIdentifier,
   isExpression,
   isFunctionExpression,
-  isArrowFunctionExpression
+  isArrowFunctionExpression,
+  V8IntrinsicIdentifier
 } from "@babel/types";
 import traverse, { TraverseOptions, NodePath } from "@babel/traverse";
-import { analyzeFns, FnObj, Fn, fnExprName, FnTypes } from "./fn";
+import { analyzeFns, FnObj, Fn, fnExprName, FnTypes, isFun } from "./fn";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
 import { parse } from "@babel/parser";
 import { fatal } from "./util";
@@ -42,7 +43,11 @@ const resolveFn = (path: NodePath<FnTypes>, runtime: Runtime) => {
   path.skip();
 };
 
-function execExpr(expr: Expression, runtime: Runtime) {
+function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
+  if (isV8IntrinsicIdentifier(expr)) {
+    throw new RuntimeError("Unsupported expr type: " + expr);
+  }
+
   const { push, pop, env, pushFrame } = runtime;
 
   const literal: TraverseOptions = {
@@ -95,21 +100,17 @@ function execExpr(expr: Expression, runtime: Runtime) {
         parent.left === node &&
         parent.operator === "="
       ) {
-        // 如果 identifier 作为赋值语句的左值，且操作符为直接赋值，则将标识符的名称压入栈中
         push(node.name);
         return;
       }
       if (isObjectMember(parent) && parent.key === node) {
-        // 如果 identifer 出现在对象字面量中，且作为 key 的部分，则将标识符的名称压入栈中
         push(node.name);
         return;
       }
       if (isMemberExpression(parent) && parent.property === node) {
-        // 如果 identifier 出现在成员访问表达式中，且作为属性部分，则将标识符的名称压入栈中
         push(node.name);
         return;
       }
-      // 其他情况我们将 identifier 绑定的值压入栈中
       push(env().deref(node.name));
     },
     BinaryExpression: {
@@ -160,7 +161,9 @@ function execExpr(expr: Expression, runtime: Runtime) {
         if (isAssignmentExpression(path.parent)) return;
         const key = pop();
         const obj = pop();
-        push(obj[key]);
+        const v = obj[key];
+        if (isFun(v)) v.thisObj = obj;
+        push(v);
       }
     }
   };
@@ -171,6 +174,14 @@ function execExpr(expr: Expression, runtime: Runtime) {
     },
     ArrowFunctionExpression(path) {
       resolveFn(path, runtime);
+    }
+  };
+
+  const thisExpr: TraverseOptions = {
+    ThisExpression() {
+      const { topFnObj } = runtime;
+      const fn = topFnObj() as FnObj;
+      push(fn.thisObj);
     }
   };
 
@@ -206,7 +217,8 @@ function execExpr(expr: Expression, runtime: Runtime) {
     ...literal,
     ...simpleExpr,
     ...callExpr,
-    ...fnExpr
+    ...fnExpr,
+    ...thisExpr
   });
 }
 
