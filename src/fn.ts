@@ -55,6 +55,7 @@ export class FnObj {
   captured: Map<string, any>;
   thisObj: any;
   prototype: { [key: string]: any };
+  native?: Function;
 
   constructor(fn: Fn) {
     this.fn = fn;

@@ -30,3 +30,11 @@ npx pikajs path-to-your-source.js
 ```
 npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/hello.test.js
 ```
+
+上面的执行结果将会在控制台打印 `hello world`
+
+我们还可以在本地启动一个 http 服务器：
+
+```
+npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/http-srv.js
+```

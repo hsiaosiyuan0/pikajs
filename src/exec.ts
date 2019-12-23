@@ -35,6 +35,17 @@ import { fatal } from "./util";
 
 class RuntimeError extends Error {}
 
+export const wrapFn2Native = (fn: FnObj, runtime: Runtime) => {
+  if (fn.native) return fn.native;
+  fn.native = function(...args: any[]) {
+    const { pushFrame } = runtime;
+    const frame = makeFrame(fn, args);
+    pushFrame(frame);
+    execFrame(runtime);
+  };
+  return fn.native;
+};
+
 const resolveFn = (path: NodePath<FnTypes>, runtime: Runtime) => {
   const { env, topFnObj, push } = runtime;
   const node = path.node;
@@ -56,7 +67,7 @@ const resolveFn = (path: NodePath<FnTypes>, runtime: Runtime) => {
   path.skip();
 };
 
-export const kProto = Symbol.for("__proto__");
+export const kProto = "__proto__";
 
 export const getProto = (obj: any, key: string) => {
   if (obj === null)
@@ -64,7 +75,7 @@ export const getProto = (obj: any, key: string) => {
   if (obj === undefined)
     throw new RuntimeError(`Cannot read property '${key}' of undefined`);
   if (obj.hasOwnProperty(key)) return obj[key];
-  if (obj.hasOwnProperty(kProto)) return getProto(obj[kProto], key);
+  if (obj[kProto]) return getProto(obj[kProto], key);
   return undefined;
 };
 
@@ -177,8 +188,7 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
       }
       const left = node.left;
       if (isIdentifier(left)) {
-        execExpr(left, runtime);
-        env().update(pop(), v);
+        env().update(left.name, v);
       } else if (isMemberExpression(left)) {
         execExpr(left.object, runtime);
         if (isIdentifier(left.property)) push(left.property.name);
@@ -196,7 +206,7 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
         const key = pop();
         const obj = pop();
         const v = getProto(obj, key);
-        if (isFun(v)) v.thisObj = obj;
+        if (isFun(v) || isNativeFun(v)) v.thisObj = obj;
         push(v);
       }
     }
@@ -225,13 +235,16 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
       };
       fn.thisObj = obj;
     }
-    const args: any[] = [];
+    let args: any[] = [];
     node.arguments.forEach(arg => {
       if (!isExpression(arg))
         throw new RuntimeError("Unsupported argument type: " + arg);
       execExpr(arg, runtime);
       args.push(pop());
     });
+    if (isNativeFun(fn)) {
+      args = args.map(arg => (isFun(arg) ? wrapFn2Native(arg, runtime) : arg));
+    }
     const frame = makeFrame(fn, args, isNew);
     frame.fnObj = fn;
     pushFrame(frame);
@@ -354,7 +367,8 @@ function execFrame(runtime: Runtime) {
 
   // native
   if (typeof fnObj === "function") {
-    const ret = fnObj(...args);
+    const thisObj = (fnObj as any).thisObj;
+    const ret = fnObj.apply(thisObj, args);
     push(ret);
     popFrame();
     return;
@@ -363,6 +377,7 @@ function execFrame(runtime: Runtime) {
   if (pc === 0) {
     const _env = enterEnv();
     fnObj.captured.forEach((v, k) => _env.def(k, v));
+    _env.registerCapture(fnObj);
     fnObj.fn.params.forEach((name, i) => _env.def(name, args[i]));
   }
   const stmts = fnObj.fn.body;
