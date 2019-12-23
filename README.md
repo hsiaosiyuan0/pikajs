@@ -25,15 +25,13 @@
 npx pikajs path-to-your-source.js
 ```
 
-`path-to-your-source.js` 可以是磁盘路径或者网络文件，可以直接拷贝运行下面的命令：
+`path-to-your-source.js` 可以是磁盘路径或者网络文件，因此我们可以通过下面的命令在控制台打印 `hello world`
 
 ```
 npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/hello.test.js
 ```
 
-上面的执行结果将会在控制台打印 `hello world`
-
-我们还可以在本地启动一个 http 服务器：
+甚至还可以在本地启动一个 HTTP 服务：
 
 ```
 npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/http-srv.js
