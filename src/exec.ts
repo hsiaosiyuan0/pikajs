@@ -29,7 +29,7 @@ import {
 } from "./fn";
 import traverse, { TraverseOptions, NodePath } from "@babel/traverse";
 import generate from "@babel/generator";
-import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
+import { runtime, makeFrame, Runtime } from "./runtime";
 import { parse } from "@babel/parser";
 import { fatal } from "./util";
 
