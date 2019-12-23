@@ -54,10 +54,12 @@ export class FnObj {
   fn: Fn;
   captured: Map<string, any>;
   thisObj: any;
+  prototype: { [key: string]: any };
 
   constructor(fn: Fn) {
     this.fn = fn;
     this.captured = new Map();
+    this.prototype = {};
   }
 }
 
@@ -119,7 +121,7 @@ export type FnTypes =
   | ArrowFunctionExpression;
 
 export function analyzeFns(node: Node) {
-  let fn = new Fn();
+  let fn = new Fn("__main__");
   let scope = new Scope();
   regBuiltin(scope);
 

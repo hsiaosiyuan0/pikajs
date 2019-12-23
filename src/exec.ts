@@ -15,7 +15,8 @@ import {
   V8IntrinsicIdentifier,
   CallExpression,
   NewExpression,
-  isNewExpression
+  isNewExpression,
+  Node
 } from "@babel/types";
 import {
   analyzeFns,
@@ -27,6 +28,7 @@ import {
   isNativeFun
 } from "./fn";
 import traverse, { TraverseOptions, NodePath } from "@babel/traverse";
+import generate from "@babel/generator";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
 import { parse } from "@babel/parser";
 import { fatal } from "./util";
@@ -52,6 +54,23 @@ const resolveFn = (path: NodePath<FnTypes>, runtime: Runtime) => {
       .def(name, fo);
   }
   path.skip();
+};
+
+export const kProto = Symbol.for("__proto__");
+
+export const getProto = (obj: any, key: string) => {
+  if (obj === null)
+    throw new RuntimeError(`Cannot read property '${key}' of null`);
+  if (obj === undefined)
+    throw new RuntimeError(`Cannot read property '${key}' of undefined`);
+  if (obj.hasOwnProperty(key)) return obj[key];
+  if (obj.hasOwnProperty(kProto)) return getProto(obj[kProto], key);
+  return undefined;
+};
+
+export const node2str = (node: Node) => {
+  const { code } = generate(node);
+  return code;
 };
 
 function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
@@ -139,40 +158,44 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
         }
       }
     },
-    AssignmentExpression: {
-      exit(path) {
-        const node = path.node;
-        const op = node.operator[0];
-        const rhs = pop();
-        let v = rhs;
-        const ops = {
-          "+": (l: any, r: any) => l + r,
-          "-": (l: any, r: any) => l - r,
-          "*": (l: any, r: any) => l * r,
-          "/": (l: any, r: any) => l / r
-        };
-        const supports = Object.keys(ops);
-        if (supports.includes(op)) {
-          const lhs = rhs;
-          v = supports[op](lhs, pop());
-        }
-        const left = node.left;
-        if (isIdentifier(left)) {
-          env().update(pop(), v);
-        } else if (isMemberExpression(left)) {
-          const key = pop();
-          const obj = pop();
-          obj[key] = v;
-        }
-        push(v);
+    AssignmentExpression(path) {
+      const node = path.node;
+      const op = node.operator[0];
+      execExpr(node.right, runtime);
+      const rhs = pop();
+      let v = rhs;
+      const ops = {
+        "+": (l: any, r: any) => l + r,
+        "-": (l: any, r: any) => l - r,
+        "*": (l: any, r: any) => l * r,
+        "/": (l: any, r: any) => l / r
+      };
+      const supports = Object.keys(ops);
+      if (supports.includes(op)) {
+        const lhs = rhs;
+        v = supports[op](lhs, pop());
       }
+      const left = node.left;
+      if (isIdentifier(left)) {
+        execExpr(left, runtime);
+        env().update(pop(), v);
+      } else if (isMemberExpression(left)) {
+        execExpr(left.object, runtime);
+        if (isIdentifier(left.property)) push(left.property.name);
+        else execExpr(left.property, runtime);
+        const key = pop();
+        const obj = pop();
+        obj[key] = v;
+      }
+      push(v);
     },
     MemberExpression: {
       exit(path) {
-        if (isAssignmentExpression(path.parent)) return;
+        const parent = path.parent;
+        if (isAssignmentExpression(parent) && parent.left === path.node) return;
         const key = pop();
         const obj = pop();
-        const v = obj[key];
+        const v = getProto(obj, key);
         if (isFun(v)) v.thisObj = obj;
         push(v);
       }
@@ -193,11 +216,14 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
     execExpr(node.callee, runtime);
     const fn = pop();
     if (!isFun(fn) && !isNativeFun(fn)) {
-      throw new RuntimeError(`${node.callee} is not a function`);
+      throw new RuntimeError(`${node2str(node.callee)} is not a function`);
     }
     const isNew = isNewExpression(node);
     if (isNew) {
-      fn.thisObj = {};
+      const obj = {
+        [kProto]: fn["prototype"]
+      };
+      fn.thisObj = obj;
     }
     const args: any[] = [];
     node.arguments.forEach(arg => {
@@ -209,7 +235,7 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
     const frame = makeFrame(fn, args, isNew);
     frame.fnObj = fn;
     pushFrame(frame);
-    execFrame(frame, runtime);
+    execFrame(runtime);
     path.skip();
   };
 
@@ -241,10 +267,10 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
 
 function execStmt(stmt: Statement, runtime: Runtime) {
   const { push, pop, enterEnv, exitEnv, env } = runtime;
-
   const exprStmt: TraverseOptions = {
     ExpressionStatement(path) {
       execExpr(path.node.expression, runtime);
+      path.skip();
     }
   };
 
@@ -320,9 +346,10 @@ function execStmt(stmt: Statement, runtime: Runtime) {
   });
 }
 
-function execFrame(frame: CallFrame, runtime: Runtime) {
+function execFrame(runtime: Runtime) {
+  const { enterEnv, push, popFrame, topFrame } = runtime;
+  const frame = topFrame()!;
   const { fnObj, args, getPC, incPC } = frame;
-  const { enterEnv, push, popFrame } = runtime;
   const pc = getPC();
 
   // native
@@ -357,10 +384,9 @@ export function exec(code: string) {
   const rt = runtime();
   const { pushFrame, topFrame } = rt;
   pushFrame(makeFrame(fn!.newObj()));
-  let frame: CallFrame | undefined;
   try {
-    while ((frame = topFrame())) {
-      execFrame(frame, rt);
+    while (topFrame()) {
+      execFrame(rt);
     }
   } catch (err) {
     if (err instanceof RuntimeError) fatal("Runtime error: " + err.stack);
