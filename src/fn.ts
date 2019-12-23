@@ -222,3 +222,7 @@ export function analyzeFns(node: Node) {
 export function isFun(obj: any): obj is FnObj {
   return obj instanceof FnObj;
 }
+
+export function isNativeFun(obj: any): obj is Function {
+  return obj instanceof Function;
+}

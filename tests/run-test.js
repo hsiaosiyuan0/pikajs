@@ -23,16 +23,12 @@ async function runTest({ name, path }) {
   const code = await retrieveLocal(path);
   let ok = false;
   let err;
-  const log = () => {};
-  const old = console.log;
-  console.log = log;
   try {
     exec(code);
     ok = true;
   } catch (e) {
     err = e;
   }
-  console.log = old;
   if (ok) {
     ui.div({ text: chalk.cyan(name), width: 20 }, { text: chalk.green("ok") });
     return { name, ok };

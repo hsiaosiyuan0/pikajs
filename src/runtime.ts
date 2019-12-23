@@ -7,11 +7,14 @@ export interface CallFrame {
   args: any[];
   getPC: () => number;
   incPC: () => void;
+  isNew: () => boolean;
+  isTerminated: boolean;
 }
 
 export function makeFrame(
   fnObj: FnObj | Function,
-  args: any[] = []
+  args: any[] = [],
+  isNew = false
 ): CallFrame {
   let pc = 0;
   return {
@@ -22,7 +25,9 @@ export function makeFrame(
     },
     incPC() {
       pc++;
-    }
+    },
+    isNew: () => isNew,
+    isTerminated: false
   };
 }
 

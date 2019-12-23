@@ -12,10 +12,21 @@ import {
   isExpression,
   isFunctionExpression,
   isArrowFunctionExpression,
-  V8IntrinsicIdentifier
+  V8IntrinsicIdentifier,
+  CallExpression,
+  NewExpression,
+  isNewExpression
 } from "@babel/types";
+import {
+  analyzeFns,
+  FnObj,
+  Fn,
+  fnExprName,
+  FnTypes,
+  isFun,
+  isNativeFun
+} from "./fn";
 import traverse, { TraverseOptions, NodePath } from "@babel/traverse";
-import { analyzeFns, FnObj, Fn, fnExprName, FnTypes, isFun } from "./fn";
 import { runtime, makeFrame, CallFrame, Runtime } from "./runtime";
 import { parse } from "@babel/parser";
 import { fatal } from "./util";
@@ -177,6 +188,31 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
     }
   };
 
+  const fnCall = function(path: NodePath<NewExpression | CallExpression>) {
+    const node = path.node;
+    execExpr(node.callee, runtime);
+    const fn = pop();
+    if (!isFun(fn) && !isNativeFun(fn)) {
+      throw new RuntimeError(`${node.callee} is not a function`);
+    }
+    const isNew = isNewExpression(node);
+    if (isNew) {
+      fn.thisObj = {};
+    }
+    const args: any[] = [];
+    node.arguments.forEach(arg => {
+      if (!isExpression(arg))
+        throw new RuntimeError("Unsupported argument type: " + arg);
+      execExpr(arg, runtime);
+      args.push(pop());
+    });
+    const frame = makeFrame(fn, args, isNew);
+    frame.fnObj = fn;
+    pushFrame(frame);
+    execFrame(frame, runtime);
+    path.skip();
+  };
+
   const thisExpr: TraverseOptions = {
     ThisExpression() {
       const { topFnObj } = runtime;
@@ -185,32 +221,12 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
     }
   };
 
+  const newExpr: TraverseOptions = {
+    NewExpression: fnCall
+  };
+
   const callExpr: TraverseOptions = {
-    CallExpression(path) {
-      const node = path.node;
-      const callee = node.callee;
-      if (isV8IntrinsicIdentifier(callee))
-        throw new RuntimeError("Unsupported callee type: " + callee);
-      execExpr(callee, runtime);
-      const fn = pop();
-      const args: any[] = [];
-      node.arguments.forEach(arg => {
-        if (!isExpression(arg))
-          throw new RuntimeError("Unsupported argument type: " + arg);
-        execExpr(arg, runtime);
-        args.push(pop());
-      });
-      const frame = makeFrame(fn, args);
-      if (fn instanceof FnObj) {
-        frame.fnObj = fn;
-      } else {
-        // native
-        frame.fnObj = fn;
-      }
-      pushFrame(frame);
-      execFrame(frame, runtime);
-      path.skip();
-    }
+    CallExpression: fnCall
   };
 
   traverse(file(program([expressionStatement(expr)]), null, null), {
@@ -218,12 +234,13 @@ function execExpr(expr: Expression | V8IntrinsicIdentifier, runtime: Runtime) {
     ...simpleExpr,
     ...callExpr,
     ...fnExpr,
-    ...thisExpr
+    ...thisExpr,
+    ...newExpr
   });
 }
 
 function execStmt(stmt: Statement, runtime: Runtime) {
-  const { push, pop, enterEnv, exitEnv, env, popFrame } = runtime;
+  const { push, pop, enterEnv, exitEnv, env } = runtime;
 
   const exprStmt: TraverseOptions = {
     ExpressionStatement(path) {
@@ -234,9 +251,13 @@ function execStmt(stmt: Statement, runtime: Runtime) {
   const retStmt: TraverseOptions = {
     ReturnStatement(path) {
       const node = path.node;
-      if (node.argument) execExpr(node.argument, runtime);
+      const { topFrame, topFnObj } = runtime;
+      const frame = topFrame()!;
+      const { isNew } = frame;
+      if (isNew()) push((topFnObj() as FnObj).thisObj);
+      else if (node.argument) execExpr(node.argument, runtime);
       else push(undefined);
-      popFrame();
+      frame.isTerminated = true;
       exitEnv();
       path.skip();
     }
@@ -318,8 +339,11 @@ function execFrame(frame: CallFrame, runtime: Runtime) {
     fnObj.fn.params.forEach((name, i) => _env.def(name, args[i]));
   }
   const stmts = fnObj.fn.body;
-  execStmt(stmts[pc], runtime);
-  incPC();
+  while (!frame.isTerminated) {
+    execStmt(stmts[getPC()], runtime);
+    incPC();
+  }
+  popFrame();
 }
 
 export function exec(code: string) {
