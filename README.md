@@ -28,11 +28,11 @@ npx pikajs path-to-your-source.js
 `path-to-your-source.js` 可以是磁盘路径或者网络文件，因此我们可以通过下面的命令在控制台打印 `hello world`
 
 ```
-npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/hello.test.js
+npx pikajs https://unpkg.com/pikajs@0.0.6/tests/hello.test.js
 ```
 
 甚至还可以在本地启动一个 HTTP 服务：
 
 ```
-npx pikajs https://raw.githubusercontent.com/hsiaosiyuan0/PikaJS/master/tests/http-srv.js
+npx pikajs https://unpkg.com/pikajs@0.0.6/tests/http-srv.js
 ```
