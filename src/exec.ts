@@ -391,7 +391,10 @@ function execFrame(runtime: Runtime) {
 export function exec(code: string) {
   let fn: Fn;
   try {
-    const ast = parse(code);
+    const ast = parse(code, {
+      sourceType: "module",
+      plugins: ["typescript"]
+    });
     fn = analyzeFns(ast);
   } catch (e) {
     fatal("Unexpected error when preparing: " + e.stack);
