@@ -1,6 +1,6 @@
 {
   "name": "pikajs",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Let's build a little Javascript interpreter together",
   "main": "lib/index.js",
   "bin": "lib/bin.js",
